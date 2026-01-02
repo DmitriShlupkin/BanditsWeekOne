@@ -46,37 +46,46 @@ BWOInventoryMarkers.GetItemPrefix = function(container, item)
     return ""
 end
 
+BWOInventoryMarkers.ApplyToPane = function(pane)
+    if not pane or not pane.items then return end
+
+    local container = pane.inventory
+    for _, entry in ipairs(pane.items) do
+        local item = entry.items and entry.items[1] or entry.item
+        if item then
+            if not entry.bwoBaseText then
+                entry.bwoBaseText = entry.text or entry.name or item:getDisplayName()
+            end
+
+            local prefix = BWOInventoryMarkers.GetItemPrefix(container, item)
+            if prefix ~= "" then
+                entry.text = prefix .. " " .. entry.bwoBaseText
+            else
+                entry.text = entry.bwoBaseText
+            end
+        end
+    end
+end
+
 local function wrapInventoryPaneMethod(methodName)
     local original = ISInventoryPane[methodName]
     if not original then
         return false
     end
 
-    ISInventoryPane[methodName] = function(self, item, ...)
-        local name = original(self, item, ...)
-        if not name or name == "" then
-            return name
-        end
-
-        local prefix = BWOInventoryMarkers.GetItemPrefix(self.inventory, item)
-        if prefix == "" then
-            return name
-        end
-
-        if string.sub(name, 1, 1) == prefix then
-            return name
-        end
-
-        return prefix .. " " .. name
+    ISInventoryPane[methodName] = function(self, ...)
+        local result = original(self, ...)
+        BWOInventoryMarkers.ApplyToPane(self)
+        return result
     end
 
     return true
 end
 
-local hooked = wrapInventoryPaneMethod("getItemName")
+local hooked = wrapInventoryPaneMethod("refresh")
 if not hooked then
-    hooked = wrapInventoryPaneMethod("getItemText")
+    hooked = wrapInventoryPaneMethod("refreshContainer")
 end
 if not hooked then
-    wrapInventoryPaneMethod("getItemDisplayName")
+    wrapInventoryPaneMethod("refreshContainerItems")
 end
