@@ -52,11 +52,9 @@ BWOInventoryMarkers.GetItemMarker = function(container, item, player, totalWeigh
     bwoLog("BWOInventoryMarkers.GetItemMarker start " .. tostring(container) .. tostring(item))
     if not container or not item then return nil end
     if not BWORooms or not BWORooms.TakeIntention then return nil end
-
-    -- Важно: раньше ты гейтил через BWOScheduler.Anarchy.Transactions, но это может быть не готово
-    -- в момент первого открытия контейнера → в итоге маркеры никогда не ставятся.
-    -- Поэтому не гейтим. Если хочешь — включай обратно, но только вместе с повторным apply на тик.
-    -- if not BWOScheduler or not BWOScheduler.Anarchy or not BWOScheduler.Anarchy.Transactions then return "" end
+    if container.getType and (container:getType() == "inventorymale" or container:getType() == "inventoryfemale") then
+        return nil
+    end
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG1 ")
     local object = (container.getParent and container:getParent()) or nil
@@ -91,6 +89,7 @@ BWOInventoryMarkers.GetItemMarker = function(container, item, player, totalWeigh
     if item.getType and item:getType() == "Money" then
         canTake = false
         shouldPay = false
+        return {text = "$", color = {r = 1, g = 1, b = 0, a = 1}}
     end
 
     if shouldPay then
