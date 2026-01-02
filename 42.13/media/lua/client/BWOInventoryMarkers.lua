@@ -47,7 +47,7 @@ local function getContainerCustomName(object)
     return nil
 end
 
-BWOInventoryMarkers.GetItemMarker = function(container, item, player)
+BWOInventoryMarkers.GetItemMarker = function(container, item, player, quantity)
     -- Не убиваемся, если зависимости не готовы.
     bwoLog("BWOInventoryMarkers.GetItemMarker start " .. tostring(container) .. tostring(item))
     if not container or not item then return nil end
@@ -96,9 +96,12 @@ BWOInventoryMarkers.GetItemMarker = function(container, item, player)
     if shouldPay then
 		bwoLog("BWOInventoryMarkers.GetItemPrefix LOG7 ($) ")
         local weight = item.getActualWeight and item:getActualWeight() or 0
+        local stackCount = quantity or 1
         local multiplier = SandboxVars and SandboxVars.BanditsWeekOne and SandboxVars.BanditsWeekOne.PriceMultiplier or 1
-        local price = BanditUtils and BanditUtils.AddPriceInflation and BanditUtils.AddPriceInflation(weight * multiplier * 10) or math.floor(weight * multiplier * 10)
+        local priceBase = weight * multiplier * 10
+        local price = BanditUtils and BanditUtils.AddPriceInflation and BanditUtils.AddPriceInflation(priceBase) or math.floor(priceBase)
         if price == 0 then price = 1 end
+        price = price * stackCount
 
         local moneyCount = 0
         if player and player.getInventory then
@@ -139,13 +142,17 @@ local function drawItemPrefixInDetails(pane)
 
     for index, entry in ipairs(pane.items) do
         local item = entry
+        local quantity = 1
         if entry.items then
             item = entry.items[1]
+            if entry.count and entry.count > 1 then
+                quantity = math.max(1, entry.count - 1)
+            end
         end
         if item then
             local topOfItem = (index - 1) * pane.itemHgt + yScroll
             if not ((topOfItem + pane.itemHgt < 0) or (topOfItem > height)) then
-                local marker = BWOInventoryMarkers.GetItemMarker(pane.inventory, item, player)
+                local marker = BWOInventoryMarkers.GetItemMarker(pane.inventory, item, player, quantity)
                 if marker and marker.text and marker.color then
                     local y = ((index - 1) * pane.itemHgt) + pane.headerHgt + textDY
                     local textWidth = textManager:MeasureStringX(font, marker.text)
