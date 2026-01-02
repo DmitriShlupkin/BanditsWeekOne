@@ -47,11 +47,11 @@ local function getContainerCustomName(object)
     return nil
 end
 
-BWOInventoryMarkers.GetItemPrefix = function(container, item)
+BWOInventoryMarkers.GetItemMarker = function(container, item, player)
     -- Не убиваемся, если зависимости не готовы.
-    bwoLog("BWOInventoryMarkers.GetItemPrefix start " .. tostring(container) .. tostring(item))
-    if not container or not item then return "" end
-    if not BWORooms or not BWORooms.TakeIntention then return "" end
+    bwoLog("BWOInventoryMarkers.GetItemMarker start " .. tostring(container) .. tostring(item))
+    if not container or not item then return nil end
+    if not BWORooms or not BWORooms.TakeIntention then return nil end
 
     -- Важно: раньше ты гейтил через BWOScheduler.Anarchy.Transactions, но это может быть не готово
     -- в момент первого открытия контейнера → в итоге маркеры никогда не ставятся.
@@ -60,17 +60,17 @@ BWOInventoryMarkers.GetItemPrefix = function(container, item)
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG1 ")
     local object = (container.getParent and container:getParent()) or nil
-    if not object then return "" end
+    if not object then return nil end
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG2 ")
     local square = (object.getSquare and object:getSquare()) or nil
-    if not square then return "" end
+    if not square then return nil end
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG3 ")
     local room = (square.getRoom and square:getRoom()) or nil
     if not room then
         -- Вне комнат (улица/часть зданий/особые контейнеры) пока просто не маркируем.
-        return ""
+        return nil
     end
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG4 ")
@@ -83,7 +83,7 @@ BWOInventoryMarkers.GetItemPrefix = function(container, item)
 
     -- Если функция вернула nil/nil — не гадим маркерами “по умолчанию”
     if canTake == nil and shouldPay == nil then
-        return ""
+        return nil
     end
 
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG6 ")
@@ -95,61 +95,85 @@ BWOInventoryMarkers.GetItemPrefix = function(container, item)
 
     if shouldPay then
 		bwoLog("BWOInventoryMarkers.GetItemPrefix LOG7 ($) ")
-        return "$"
+        local weight = item.getActualWeight and item:getActualWeight() or 0
+        local multiplier = SandboxVars and SandboxVars.BanditsWeekOne and SandboxVars.BanditsWeekOne.PriceMultiplier or 1
+        local price = BanditUtils and BanditUtils.AddPriceInflation and BanditUtils.AddPriceInflation(weight * multiplier * 10) or math.floor(weight * multiplier * 10)
+        if price == 0 then price = 1 end
+
+        local moneyCount = 0
+        if player and player.getInventory then
+            local function predicateMoney(it)
+                return it:getType() == "Money"
+            end
+            local inventory = player:getInventory()
+            local items = ArrayList.new()
+            inventory:getAllEvalRecurse(predicateMoney, items)
+            moneyCount = items:size()
+        end
+
+        local canPay = moneyCount >= price
+        local color = canPay and {r = 0, g = 1, b = 0, a = 1} or {r = 1, g = 0, b = 0, a = 1}
+        return {text = "$" .. tostring(price), color = color}
     end
 
     if canTake == false then
 		bwoLog("BWOInventoryMarkers.GetItemPrefix LOG7 (#) ")
-        return "#"
+        return {text = "#", color = {r = 1, g = 0, b = 0, a = 1}}
     end
     bwoLog("BWOInventoryMarkers.GetItemPrefix LOG8 (nothing) ")
 
-    return ""
+    return nil
 end
 
-local function hookPaneListbox(pane)
-    if not pane or pane.__bwoHookedListbox then return end
-    if not pane.items or not pane.items.doDrawItem then return end
+local function drawItemPrefixInDetails(pane)
+    if not pane.items or not pane.inventory then return end
 
-    pane.__bwoHookedListbox = true
-    local origDoDrawItem = pane.items.doDrawItem
+    local font = pane.font or UIFont.Small
+    local textManager = getTextManager()
+    local fh = textManager:getFontHeight(font)
+    local textDY = (pane.itemHgt - fh) / 2
+    local yScroll = pane.getYScroll and pane:getYScroll() or 0
+    local height = pane.getHeight and pane:getHeight() or 0
+    local player = getSpecificPlayer(pane.player)
+    local padding = 6
 
-    pane.items.doDrawItem = function(listbox, y, entry, alt)
-        -- НАРИСОВАТЬ МАРКЕР (можно до или после orig)
-        local item = entry and ((entry.items and entry.items[1]) or entry.item)
-        if item and pane.inventory then
-            local prefix = BWOInventoryMarkers.GetItemPrefix(pane.inventory, item)
-            if prefix ~= "" then
-                local font = listbox.font or UIFont.Small
-                local fh = getTextManager():getFontHeight(font)
-                local x = 6
-                local yy = y + math.max(0, (listbox.itemheight - fh) / 2)
-                listbox:drawText(prefix, x, yy, 1, 1, 1, 1, font)
+    for index, entry in ipairs(pane.items) do
+        local item = entry
+        if entry.items then
+            item = entry.items[1]
+        end
+        if item then
+            local topOfItem = (index - 1) * pane.itemHgt + yScroll
+            if not ((topOfItem + pane.itemHgt < 0) or (topOfItem > height)) then
+                local marker = BWOInventoryMarkers.GetItemMarker(pane.inventory, item, player)
+                if marker and marker.text and marker.color then
+                    local y = ((index - 1) * pane.itemHgt) + pane.headerHgt + textDY
+                    local textWidth = textManager:MeasureStringX(font, marker.text)
+                    local x = pane.column4 - textWidth - padding
+                    pane:drawText(marker.text, x, y, marker.color.r, marker.color.g, marker.color.b, marker.color.a, font)
+                end
             end
         end
-
-        return origDoDrawItem(listbox, y, entry, alt)
     end
-
-    bwoLog("hooked pane.items.doDrawItem")
 end
 
-if ISInventoryPane and ISInventoryPane.createChildren then
-    local origCreateChildren = ISInventoryPane.createChildren
-    ISInventoryPane.createChildren = function(self, ...)
-        origCreateChildren(self, ...)
-        hookPaneListbox(self)
+local function hookInventoryPaneRenderDetails()
+    if not ISInventoryPane or not ISInventoryPane.renderdetails then return end
+    if ISInventoryPane.__bwoHookedRenderDetails then return end
+
+    ISInventoryPane.__bwoHookedRenderDetails = true
+    local origRenderDetails = ISInventoryPane.renderdetails
+    ISInventoryPane.renderdetails = function(self, doDragged)
+        local result = origRenderDetails(self, doDragged)
+        if doDragged == false then
+            drawItemPrefixInDetails(self)
+        end
+        return result
     end
-    bwoLog("hooked ISInventoryPane.createChildren")
+
+    bwoLog("hooked ISInventoryPane.renderdetails")
 end
 
-if ISInventoryPane and ISInventoryPane.render then
-    local origRender = ISInventoryPane.render
-    ISInventoryPane.render = function(self, ...)
-        hookPaneListbox(self)
-        return origRender(self, ...)
-    end
-    bwoLog("hooked ISInventoryPane.render (fallback)")
-end
+hookInventoryPaneRenderDetails()
 
 bwoLog("BWOInventoryMarkers loaded OK")
