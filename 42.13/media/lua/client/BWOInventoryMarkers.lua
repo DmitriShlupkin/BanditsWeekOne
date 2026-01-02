@@ -97,7 +97,7 @@ BWOInventoryMarkers.GetItemMarker = function(container, item, player, totalWeigh
 		bwoLog("BWOInventoryMarkers.GetItemPrefix LOG7 ($) ")
         local weight = totalWeight
         if weight == nil then
-            weight = item.getActualWeight and item:getActualWeight() or 0
+            weight = item.getUnequippedWeight and item:getUnequippedWeight() or 0
         end
         local multiplier = SandboxVars and SandboxVars.BanditsWeekOne and SandboxVars.BanditsWeekOne.PriceMultiplier or 1
         local priceBase = weight * multiplier * 10
@@ -145,11 +145,11 @@ local function drawItemPrefixInDetails(pane)
         local item = entry
         local totalWeight = nil
         if entry.items then
-            item = entry.items[1]
+            item = entry.items[2] or entry.items[1]
             if entry.weight then
                 totalWeight = entry.weight
             elseif entry.count and entry.count > 1 then
-                local perItemWeight = item.getActualWeight and item:getActualWeight() or 0
+                local perItemWeight = item.getUnequippedWeight and item:getUnequippedWeight() or 0
                 totalWeight = perItemWeight * math.max(1, entry.count - 1)
             end
         end
