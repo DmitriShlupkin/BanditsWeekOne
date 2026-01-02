@@ -107,49 +107,51 @@ BWOInventoryMarkers.GetItemPrefix = function(container, item)
     return ""
 end
 
-local function hookPaneListbox(pane)
-    if not pane or pane.__bwoHookedListbox then return end
-    if not pane.items or not pane.items.doDrawItem then return end
 
-    pane.__bwoHookedListbox = true
-    local origDoDrawItem = pane.items.doDrawItem
+local function drawItemPrefixInDetails(pane)
+    if not pane.items or not pane.inventory then return end
 
-    pane.items.doDrawItem = function(listbox, y, entry, alt)
-        -- НАРИСОВАТЬ МАРКЕР (можно до или после orig)
-        local item = entry and ((entry.items and entry.items[1]) or entry.item)
-        if item and pane.inventory then
-            local prefix = BWOInventoryMarkers.GetItemPrefix(pane.inventory, item)
-            if prefix ~= "" then
-                local font = listbox.font or UIFont.Small
-                local fh = getTextManager():getFontHeight(font)
-                local x = 6
-                local yy = y + math.max(0, (listbox.itemheight - fh) / 2)
-                listbox:drawText(prefix, x, yy, 1, 1, 1, 1, font)
+    local font = pane.font or UIFont.Small
+    local fh = getTextManager():getFontHeight(font)
+    local textDY = (pane.itemHgt - fh) / 2
+    local yScroll = pane.getYScroll and pane:getYScroll() or 0
+    local height = pane.getHeight and pane:getHeight() or 0
+
+    for index, entry in ipairs(pane.items) do
+        local item = entry
+        if entry.items then
+            item = entry.items[1]
+        end
+        if item then
+            local topOfItem = (index - 1) * pane.itemHgt + yScroll
+            if not ((topOfItem + pane.itemHgt < 0) or (topOfItem > height)) then
+                local prefix = BWOInventoryMarkers.GetItemPrefix(pane.inventory, item)
+                if prefix ~= "" then
+                    local y = ((index - 1) * pane.itemHgt) + pane.headerHgt + textDY
+                    pane:drawText(prefix, 4, y, 1, 1, 1, 1, font)
+                end
             end
         end
-
-        return origDoDrawItem(listbox, y, entry, alt)
     end
-
-    bwoLog("hooked pane.items.doDrawItem")
 end
 
-if ISInventoryPane and ISInventoryPane.createChildren then
-    local origCreateChildren = ISInventoryPane.createChildren
-    ISInventoryPane.createChildren = function(self, ...)
-        origCreateChildren(self, ...)
-        hookPaneListbox(self)
+local function hookInventoryPaneRenderDetails()
+    if not ISInventoryPane or not ISInventoryPane.renderdetails then return end
+    if ISInventoryPane.__bwoHookedRenderDetails then return end
+
+    ISInventoryPane.__bwoHookedRenderDetails = true
+    local origRenderDetails = ISInventoryPane.renderdetails
+    ISInventoryPane.renderdetails = function(self, doDragged)
+        local result = origRenderDetails(self, doDragged)
+        if doDragged == false then
+            drawItemPrefixInDetails(self)
+        end
+        return result
     end
-    bwoLog("hooked ISInventoryPane.createChildren")
+
+    bwoLog("hooked ISInventoryPane.renderdetails")
 end
 
-if ISInventoryPane and ISInventoryPane.render then
-    local origRender = ISInventoryPane.render
-    ISInventoryPane.render = function(self, ...)
-        hookPaneListbox(self)
-        return origRender(self, ...)
-    end
-    bwoLog("hooked ISInventoryPane.render (fallback)")
-end
+hookInventoryPaneRenderDetails()
 
 bwoLog("BWOInventoryMarkers loaded OK")
